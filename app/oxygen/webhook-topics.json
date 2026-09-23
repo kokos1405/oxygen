@@ -1,0 +1,47 @@
+[
+  {
+    "topic": "app/uninstalled",
+    "uri": "/webhooks/app/uninstalled",
+    "summary": "Διαγραφή session μετά την απεγκατάσταση"
+  },
+  {
+    "topic": "app/scopes_update",
+    "uri": "/webhooks/app/scopes_update",
+    "summary": "Ενημέρωση αποθηκευμένων scopes στο session"
+  },
+  {
+    "topic": "customers/create",
+    "uri": "/webhooks/customers/create",
+    "summary": "Νέος πελάτης → syncCustomer (επαφή Oxygen)"
+  },
+  {
+    "topic": "customers/update",
+    "uri": "/webhooks/customers/update",
+    "summary": "Ενημέρωση πελάτη → syncCustomer"
+  },
+  {
+    "topic": "products/create",
+    "uri": "/webhooks/products/create",
+    "summary": "Νέο προϊόν → syncProduct"
+  },
+  {
+    "topic": "products/update",
+    "uri": "/webhooks/products/update",
+    "summary": "Ενημέρωση προϊόντος → syncProduct"
+  },
+  {
+    "topic": "inventory_levels/update",
+    "uri": "/webhooks/inventory_levels/update",
+    "summary": "Απόθεμα ανά location → syncInventory"
+  },
+  {
+    "topic": "orders/create",
+    "uri": "/webhooks/orders/create",
+    "summary": "Νέα παραγγελία → εξασφάλιση επαφής, χωρίς δεύτερο τιμολόγιο"
+  },
+  {
+    "topic": "orders/paid",
+    "uri": "/webhooks/orders/paid",
+    "summary": "Εξοφλημένη παραγγελία → επαφή και POST /invoices"
+  }
+]
