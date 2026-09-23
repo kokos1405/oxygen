@@ -83,7 +83,7 @@ export default function Index() {
         <s-paragraph>
           {inventoryWritesEnabled
             ? "Απόθεμα: οι ενημερώσεις γράφονται στη μία αποθήκη OXYGEN_DEFAULT_WAREHOUSE_ID."
-            : "Απόθεμα: ανενεργό. Το OXYGEN_DEFAULT_WAREHOUSE_ID είναι κενό, οπότε το inventory_levels/update δεν γράφει ποσότητα. Πελάτες, προϊόντα και παραγγελίες συγχρονίζονται."}
+            : "Απόθεμα: ανενεργό. Το OXYGEN_DEFAULT_WAREHOUSE_ID είναι κενό, οπότε το inventory_levels/update δεν γράφει ποσότητα. Πελάτες και παραγγελίες συγχρονίζονται. Νέο προϊόν δεν δημιουργείται χωρίς το id της αποθήκης."}
         </s-paragraph>
       </s-section>
 

@@ -24,6 +24,7 @@ import { EntityType, findOxygenId, upsertMapping } from "./mapping.server";
  * Shopify → Oxygen sandbox sync.
  * Paid orders become retail receipts: document_type `rp`, myDATA `11.1`.
  * One Oxygen product per variant SKU. Stock writes need OXYGEN_DEFAULT_WAREHOUSE_ID.
+ * New products are created with warehouses: [{ id, quantity: 0 }] and throw if that id is missing.
  */
 
 export type SyncStatus = "stub" | "synced" | "skipped";
@@ -257,7 +258,7 @@ export async function syncInventory(input: {
 
   if (!warehouseId || !shouldWriteInventory(warehouseId)) {
     const message =
-      "OXYGEN_DEFAULT_WAREHOUSE_ID is empty. Inventory stock was not written. Products, customers and orders still sync.";
+      "OXYGEN_DEFAULT_WAREHOUSE_ID is empty. Inventory stock was not written. Customers and orders still sync. Creating a new product requires the warehouse id.";
     console.warn(`[oxygen-sync] ${message}`);
     return result({
       status: "skipped",
@@ -529,9 +530,14 @@ async function upsertVariant(
     oxygenId = updated.id || oxygenId;
   } else {
     const warehouseId = readWarehouseId();
+    if (!warehouseId) {
+      throw new Error(
+        "OXYGEN_DEFAULT_WAREHOUSE_ID is empty. Oxygen rejects product create with warehouses: []. Set it so create sends warehouses: [{ id, quantity: 0 }].",
+      );
+    }
     const created = await client.createProduct({
       ...fields,
-      warehouses: warehouseId ? [{ id: warehouseId }] : [],
+      warehouses: [{ id: warehouseId, quantity: 0 }],
     });
     if (!created.id) {
       throw new Error(`Oxygen product create returned no id for SKU ${variant.sku}.`);

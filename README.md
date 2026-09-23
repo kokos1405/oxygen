@@ -101,7 +101,7 @@ OpenAPI (πηγή των πεδίων, έκδοση που διαβάστηκε:
    Προαιρετικά UUID στο env: `OXYGEN_PAYMENT_METHOD_CASH`, `_CARD`, `_PAYPAL`, `_DEFAULT`. Η λίστα μεθόδων γίνεται cache για 10 λεπτά.
 3. ΦΠΑ πάντα 24%. `sale_tax_id` / `tax_id` γραμμής: `2238364a-8b60-4dc6-899c-1d8c63d5ea58`.
 4. Ένα Oxygen product ανά Shopify variant. `code` = SKU. Χωρίς SKU το variant παραλείπεται και γράφεται σφάλμα στο log. Δεν επινοείται κωδικός.
-5. Μία αποθήκη Oxygen για όλες τις τοποθεσίες Shopify: `OXYGEN_DEFAULT_WAREHOUSE_ID`. Αν είναι κενό, το `inventory_levels/update` δεν γράφει ποσότητα. Πελάτες, προϊόντα και παραγγελίες συνεχίζουν. Νέο προϊόν χωρίς αποθήκη στέλνει κενό `warehouses`. Αν το sandbox το απορρίψει, ορίστε το env. Η τιμή καταλόγου θεωρείται μικτή (με ΦΠΑ) και στέλνεται ως `sale_net_amount = price / 1.24`, εκτός αν η παραγγελία έχει `taxes_included: false`.
+5. Μία αποθήκη Oxygen για όλες τις τοποθεσίες Shopify: `OXYGEN_DEFAULT_WAREHOUSE_ID`. Αν είναι κενό, το `inventory_levels/update` δεν γράφει ποσότητα. Η δημιουργία νέου προϊόντος στέλνει `warehouses: [{ id, quantity: 0 }]` και ρίχνει Error αν λείπει το id, αντί για `warehouses: []`. Πελάτες και παραγγελίες συνεχίζουν. Η τιμή καταλόγου θεωρείται μικτή (με ΦΠΑ) και στέλνεται ως `sale_net_amount = price / 1.24`, εκτός αν η παραγγελία έχει `taxes_included: false`.
 
 Το `orders/create` εξασφαλίζει την επαφή και δεν εκδίδει παραστατικό. Το `orders/paid` κάνει `POST /invoices` μία φορά. Αν υπάρχει ήδη `ExternalIdMap` για την παραγγελία, δεν γίνεται δεύτερο POST.
 
@@ -122,7 +122,7 @@ OpenAPI (πηγή των πεδίων, έκδοση που διαβάστηκε:
 | `SCOPES` | Τα ίδια read scopes με το `shopify.app.toml`. |
 | `OXYGEN_API_KEY` | Bearer token sandbox. Κενό = κανένα call. |
 | `OXYGEN_API_BASE_URL` | Προεπιλογή `https://sandbox-api.oxygen.gr/v1`. |
-| `OXYGEN_DEFAULT_WAREHOUSE_ID` | Μία αποθήκη για κάθε location. Κενό = χωρίς εγγραφή αποθέματος. |
+| `OXYGEN_DEFAULT_WAREHOUSE_ID` | Μία αποθήκη για κάθε location. Κενό = χωρίς εγγραφή αποθέματος. Το create προϊόντος απαιτεί `warehouses: [{ id, quantity: 0 }]`. |
 | `OXYGEN_PAYMENT_METHOD_CASH` | Προαιρετικό UUID για μετρητά. |
 | `OXYGEN_PAYMENT_METHOD_CARD` | Προαιρετικό UUID για κάρτα / POS. |
 | `OXYGEN_PAYMENT_METHOD_PAYPAL` | Προαιρετικό UUID για PayPal. |
@@ -165,4 +165,4 @@ npm run dev                # shopify app dev — tunnel, migrate, React Router
 
 ## English
 
-Shopify-master bridge into Oxygen Pelatologio. This repo is a React Router Shopify app (current official template; Remix’s successor) with a sandbox-only Oxygen client, Prisma id map, and HMAC-validated webhooks that call the sandbox API. Distribution is `AppDistribution.SingleMerchant` (custom single-merchant app; this SDK has no `AppDistribution.Custom`). App Store compliance webhooks are not enabled. Do not install or deploy to the live shop `nth02c-ir.myshopify.com` without merchant approval. The only Oxygen API base is `https://sandbox-api.oxygen.gr/v1`. Do not point `OXYGEN_API_BASE_URL` at `https://api.oxygen.gr`. Paid orders become retail receipts (`rp`, myDATA `11.1`) with ΦΠΑ 24% tax id `2238364a-8b60-4dc6-899c-1d8c63d5ea58`. One Oxygen product per variant SKU. Inventory writes require `OXYGEN_DEFAULT_WAREHOUSE_ID`. Copy `.env.example` to `.env`, then `npm install`, `npx prisma migrate deploy`, and `npm run build`. `npm run dev` needs the Shopify CLI and a **development** store. Field reference: <https://api.oxygen.gr/openapi.json>.
+Shopify-master bridge into Oxygen Pelatologio. This repo is a React Router Shopify app (current official template; Remix’s successor) with a sandbox-only Oxygen client, Prisma id map, and HMAC-validated webhooks that call the sandbox API. Distribution is `AppDistribution.SingleMerchant` (custom single-merchant app; this SDK has no `AppDistribution.Custom`). App Store compliance webhooks are not enabled. Do not install or deploy to the live shop `nth02c-ir.myshopify.com` without merchant approval. The only Oxygen API base is `https://sandbox-api.oxygen.gr/v1`. Do not point `OXYGEN_API_BASE_URL` at `https://api.oxygen.gr`. Paid orders become retail receipts (`rp`, myDATA `11.1`) with ΦΠΑ 24% tax id `2238364a-8b60-4dc6-899c-1d8c63d5ea58`. One Oxygen product per variant SKU. Product create sends `warehouses: [{ id, quantity: 0 }]` and throws if `OXYGEN_DEFAULT_WAREHOUSE_ID` is empty. Inventory writes require the same id. Copy `.env.example` to `.env`, then `npm install`, `npx prisma migrate deploy`, and `npm run build`. `npm run dev` needs the Shopify CLI and a **development** store. Field reference: <https://api.oxygen.gr/openapi.json>.
