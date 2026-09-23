@@ -4,6 +4,8 @@ Custom Shopify app που στέλνει προϊόντα, απόθεμα, πα�
 
 Το Shopify είναι master. Το Oxygen δεν γράφει πίσω στο κατάστημα σε αυτή τη φάση.
 
+Διανομή: `AppDistribution.SingleMerchant` (custom app για έναν έμπορο στο Partner Dashboard). Αυτό το SDK δεν έχει `AppDistribution.Custom`. Δεν είναι δημόσιο App Store app, οπότε τα compliance webhooks μένουν ανενεργά. Η εφαρμογή μένει embedded.
+
 Το επίσημο template της Shopify για νέα apps είναι πλέον **React Router 7** (διάδοχος του Remix template): `@shopify/shopify-app-react-router`, Polaris web components, Prisma, SQLite. Δεν υπάρχει επίσημο Shopify plugin από την Oxygen. Το WooCommerce plugin της Oxygen χρησιμοποιήθηκε μόνο ως μοτίβο (το eshop σπρώχνει παραστατικά στο ERP), χωρίς να αντιγραφεί κώδικας.
 
 ## Μην το εγκαταστήσετε στο live κατάστημα
@@ -33,7 +35,7 @@ flowchart LR
   end
 
   subgraph oxygen [Oxygen sandbox]
-    API["sandbox-api.oxygen.gr/v1"]
+    API["https://sandbox-api.oxygen.gr/v1"]
     Docs[Τιμολόγια PDF και πληρωμές]
   end
 
@@ -142,4 +144,4 @@ npm run dev                # shopify app dev — tunnel, migrate, React Router
 
 ## English
 
-Shopify-master bridge into Oxygen Pelatologio. This repo is a React Router Shopify app (current official template; Remix’s successor) with a sandbox-only Oxygen client, Prisma id map, HMAC-validated webhook routes, and sync stubs. Do not install or deploy to the live shop `nth02c-ir.myshopify.com`. Do not point `OXYGEN_API_BASE_URL` at `https://api.oxygen.gr`. Copy `.env.example` to `.env`, then `npm install`, `npx prisma migrate deploy`, and `npm run build`. `npm run dev` needs the Shopify CLI and a **development** store. Invoice field codes that depend on the merchant are marked `FIXME` and linked to <https://api.oxygen.gr/openapi.json> instead of being invented.
+Shopify-master bridge into Oxygen Pelatologio. This repo is a React Router Shopify app (current official template; Remix’s successor) with a sandbox-only Oxygen client, Prisma id map, HMAC-validated webhook routes, and sync stubs. Distribution is `AppDistribution.SingleMerchant` (custom single-merchant app; this SDK has no `AppDistribution.Custom`). App Store compliance webhooks are not enabled. Do not install or deploy to the live shop `nth02c-ir.myshopify.com` without merchant approval. The only Oxygen API base is `https://sandbox-api.oxygen.gr/v1`. Do not point `OXYGEN_API_BASE_URL` at `https://api.oxygen.gr`. Copy `.env.example` to `.env`, then `npm install`, `npx prisma migrate deploy`, and `npm run build`. `npm run dev` needs the Shopify CLI and a **development** store. Invoice field codes that depend on the merchant are marked `FIXME` and linked to <https://api.oxygen.gr/openapi.json> instead of being invented.

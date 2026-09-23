@@ -6,6 +6,7 @@
  * Keep the host check aligned with app/oxygen/sandbox-policy.ts.
  */
 
+/** The only Oxygen API base. Must match app/oxygen/sandbox-policy.ts. */
 const SANDBOX_BASE_URL = "https://sandbox-api.oxygen.gr/v1";
 const PRODUCTION_HOST = "api.oxygen.gr";
 

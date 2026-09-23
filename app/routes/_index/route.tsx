@@ -35,7 +35,7 @@ export default function Index() {
               <s-text-field
                 name="shop"
                 label="Shop domain"
-                details="π.χ. my-dev-store.myshopify.com — όχι το live κατάστημα"
+                details="Development store. Όχι το live κατάστημα nth02c-ir.myshopify.com"
                 autocomplete="on"
               ></s-text-field>
               <s-button type="submit" variant="primary">

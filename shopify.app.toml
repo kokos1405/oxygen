@@ -62,8 +62,8 @@ api_version = "2025-10"
   topics = ["orders/paid"]
   uri = "/webhooks/orders/paid"
 
-  # Public App Store apps must also subscribe to the mandatory compliance topics.
-  # This bridge is a single-merchant custom app. Leave these commented until distribution requires them.
+  # App Store compliance topics are not subscribed. This app uses
+  # AppDistribution.SingleMerchant (custom, one merchant), not public App Store distribution.
   # https://shopify.dev/docs/apps/build/privacy-law-compliance
   # [[webhooks.subscriptions]]
   # uri = "/webhooks/customers/data_request"

@@ -35,7 +35,7 @@ export default function Auth() {
             <s-text-field
               name="shop"
               label="Shop domain"
-              details="my-dev-store.myshopify.com"
+              details="Development store. Όχι το live κατάστημα nth02c-ir.myshopify.com"
               value={shop}
               onChange={(event) => setShop(event.currentTarget.value)}
               autocomplete="on"

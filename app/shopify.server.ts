@@ -15,7 +15,11 @@ const shopify = shopifyApp({
   appUrl: process.env.SHOPIFY_APP_URL || "",
   authPathPrefix: "/auth",
   sessionStorage: new PrismaSessionStorage(prisma),
-  distribution: AppDistribution.AppStore,
+  // Custom app for one merchant, created in the Partner Dashboard.
+  // This SDK has no AppDistribution.Custom; SingleMerchant is that mode.
+  // It stays embedded. ShopifyAdmin is the non-embedded admin-created app.
+  // Public App Store distribution is not used, so compliance webhooks stay off.
+  distribution: AppDistribution.SingleMerchant,
   future: {
     expiringOfflineAccessTokens: true,
   },

@@ -33,7 +33,7 @@ test("refuses the production Oxygen host without calling it", () => {
 test("refuses a non-https base URL", () => {
   const result = run({
     OXYGEN_API_KEY: "test-key-not-used",
-    OXYGEN_API_BASE_URL: "http://sandbox-api.oxygen.gr/v1",
+    OXYGEN_API_BASE_URL: "http://127.0.0.1/v1",
   });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /https/);

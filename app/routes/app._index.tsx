@@ -73,9 +73,9 @@ export default function Index() {
           </s-button>
         </Form>
         <s-paragraph>
-          Το live κατάστημα δεν είναι στόχος εγκατάστασης. Μόνο sandbox
-          (https://sandbox-api.oxygen.gr/v1) και development store, μετά από
-          έγκριση του εμπόρου.
+          Μην εγκαταστήσετε την εφαρμογή στο live κατάστημα
+          nth02c-ir.myshopify.com χωρίς έγκριση του εμπόρου. Oxygen μόνο στο
+          https://sandbox-api.oxygen.gr/v1, σε development store.
         </s-paragraph>
       </s-section>
 
