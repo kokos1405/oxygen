@@ -1,0 +1,61 @@
+// Session storage matches the Shopify app template.
+// ExternalIdMap and SyncEvent are the Oxygen bridge (see README).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.sqlite"
+}
+
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+/// shopify_id ↔ oxygen_id for one shop.
+/// Chosen over Shopify metafields so the bridge stays read-only on Shopify
+/// and can map orders, locations and invoices as well as products and customers.
+model ExternalIdMap {
+  id         String   @id @default(cuid())
+  shop       String
+  entityType String
+  shopifyId  String
+  oxygenId   String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([shop, entityType, shopifyId])
+  @@index([shop, entityType, oxygenId])
+}
+
+/// Webhook processing log. `webhookId` is Shopify's X-Shopify-Webhook-Id.
+model SyncEvent {
+  id        String   @id @default(cuid())
+  shop      String
+  topic     String
+  shopifyId String?
+  webhookId String?  @unique
+  status    String
+  message   String?
+  createdAt DateTime @default(now())
+
+  @@index([shop, createdAt])
+}

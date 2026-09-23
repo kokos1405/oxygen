@@ -1,0 +1,78 @@
+# Oxygen Pelatologio bridge.
+# Link this file to a Shopify DEV app (`shopify app config link`).
+# Do not install or deploy to the live shop nth02c-ir.myshopify.com without merchant approval.
+name = "Oxygen Pelatologio"
+client_id = ""
+embedded = true
+
+[access_scopes]
+# Shopify is the master for products, inventory, orders and customers.
+# Oxygen ids are stored in the app database, so no write scopes are required.
+# Do not add write_products, write_inventory, write_orders or write_customers
+# unless a later phase must mutate Shopify (for example metafields) and the merchant agrees.
+# Learn more: https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_products,read_inventory,read_orders,read_customers,read_locations"
+
+[webhooks]
+api_version = "2025-10"
+
+  # Handled by: /app/routes/webhooks.app.uninstalled.tsx
+  [[webhooks.subscriptions]]
+  topics = ["app/uninstalled"]
+  uri = "/webhooks/app/uninstalled"
+
+  # Handled by: /app/routes/webhooks.app.scopes_update.tsx
+  [[webhooks.subscriptions]]
+  topics = ["app/scopes_update"]
+  uri = "/webhooks/app/scopes_update"
+
+  # Handled by: /app/routes/webhooks.customers.create.tsx
+  [[webhooks.subscriptions]]
+  topics = ["customers/create"]
+  uri = "/webhooks/customers/create"
+
+  # Handled by: /app/routes/webhooks.customers.update.tsx
+  [[webhooks.subscriptions]]
+  topics = ["customers/update"]
+  uri = "/webhooks/customers/update"
+
+  # Handled by: /app/routes/webhooks.products.create.tsx
+  [[webhooks.subscriptions]]
+  topics = ["products/create"]
+  uri = "/webhooks/products/create"
+
+  # Handled by: /app/routes/webhooks.products.update.tsx
+  [[webhooks.subscriptions]]
+  topics = ["products/update"]
+  uri = "/webhooks/products/update"
+
+  # Handled by: /app/routes/webhooks.inventory_levels.update.tsx
+  [[webhooks.subscriptions]]
+  topics = ["inventory_levels/update"]
+  uri = "/webhooks/inventory_levels/update"
+
+  # Handled by: /app/routes/webhooks.orders.create.tsx
+  [[webhooks.subscriptions]]
+  topics = ["orders/create"]
+  uri = "/webhooks/orders/create"
+
+  # orders/paid (not orders/updated): updates are noisy and must not issue a second invoice.
+  # Handled by: /app/routes/webhooks.orders.paid.tsx
+  [[webhooks.subscriptions]]
+  topics = ["orders/paid"]
+  uri = "/webhooks/orders/paid"
+
+  # Public App Store apps must also subscribe to the mandatory compliance topics.
+  # This bridge is a single-merchant custom app. Leave these commented until distribution requires them.
+  # https://shopify.dev/docs/apps/build/privacy-law-compliance
+  # [[webhooks.subscriptions]]
+  # uri = "/webhooks/customers/data_request"
+  # compliance_topics = ["customers/data_request"]
+  #
+  # [[webhooks.subscriptions]]
+  # uri = "/webhooks/customers/redact"
+  # compliance_topics = ["customers/redact"]
+  #
+  # [[webhooks.subscriptions]]
+  # uri = "/webhooks/shop/redact"
+  # compliance_topics = ["shop/redact"]
