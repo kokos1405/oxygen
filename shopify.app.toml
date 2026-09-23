@@ -26,6 +26,8 @@ api_version = "2025-10"
   topics = ["app/scopes_update"]
   uri = "/webhooks/app/scopes_update"
 
+  # customers/* and orders/* stay subscribed. The Partners app "Oxygen Pelatologio"
+  # uses Custom distribution, which includes protected customer data automatically.
   # Handled by: /app/routes/webhooks.customers.create.tsx
   [[webhooks.subscriptions]]
   topics = ["customers/create"]
