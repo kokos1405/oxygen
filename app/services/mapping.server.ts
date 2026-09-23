@@ -9,18 +9,18 @@ import prisma from "../db.server";
  * - Lookups work in both directions (Shopify webhook → Oxygen id, and Oxygen id → Shopify id).
  * - A dev shop and the live shop stay isolated by the `shop` column.
  *
- * entityType values used by the stubs:
- * - customer  Shopify Customer id → Oxygen contact id
- * - product   Shopify Product id → Oxygen product id (see variant FIXME in syncProduct)
- * - variant   Shopify Variant id → Oxygen product id, if the merchant maps one SKU per variant
- * - location  Shopify Location id → Oxygen warehouse id
- * - order     Shopify Order id → Oxygen invoice id (idempotency key for POST /invoices)
+ * entityType values:
+ * - customer        Shopify Customer id (or guest key) → Oxygen contact id
+ * - variant         Shopify Variant id → Oxygen product id (one product per SKU)
+ * - inventory_item  Shopify inventory item id → Oxygen product id
+ * - order           Shopify Order id → Oxygen invoice id (idempotency for POST /invoices)
  */
 
 export const EntityType = {
   Customer: "customer",
   Product: "product",
   Variant: "variant",
+  InventoryItem: "inventory_item",
   Location: "location",
   Order: "order",
 } as const;

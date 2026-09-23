@@ -1,12 +1,29 @@
-import { OXYGEN_OPENAPI_URL } from "../oxygen/sandbox-policy";
-import { EntityType, findOxygenId } from "./mapping.server";
+import {
+  createOxygenClient,
+  type OxygenClient,
+} from "../oxygen/client.server";
+import { resolvePaymentMethodId } from "../oxygen/payment-methods.server";
+import {
+  buildInvoiceLine,
+  buildPrivateContact,
+  buildRetailReceipt,
+  CATALOG_PRICES_INCLUDE_VAT,
+  contactCode,
+  issueDateFromShopify,
+  normalizeSku,
+  productDisplayName,
+  readWarehouseId,
+  SALE_TAX_ID,
+  shopifyGateway,
+  shopifyPriceToNet,
+  shouldWriteInventory,
+} from "../oxygen/sync-rules";
+import { EntityType, findOxygenId, upsertMapping } from "./mapping.server";
 
 /**
- * Sync stubs. Shopify is master. These functions do not call Oxygen yet:
- * several required ids (tax, payment method, myDATA type, warehouse) are
- * merchant configuration and must not be invented.
- *
- * OpenAPI: https://api.oxygen.gr/openapi.json
+ * Shopify → Oxygen sandbox sync.
+ * Paid orders become retail receipts: document_type `rp`, myDATA `11.1`.
+ * One Oxygen product per variant SKU. Stock writes need OXYGEN_DEFAULT_WAREHOUSE_ID.
  */
 
 export type SyncStatus = "stub" | "synced" | "skipped";
@@ -19,34 +36,43 @@ export interface SyncResult {
   message: string;
 }
 
+export interface ShopifyAddress {
+  first_name?: string | null;
+  last_name?: string | null;
+  phone?: string | null;
+  country_code?: string | null;
+  address1?: string | null;
+  city?: string | null;
+  zip?: string | null;
+  company?: string | null;
+}
+
 export interface ShopifyCustomerPayload {
   id?: number | string;
   email?: string | null;
   first_name?: string | null;
   last_name?: string | null;
   phone?: string | null;
-  default_address?: {
-    country_code?: string | null;
-    address1?: string | null;
-    city?: string | null;
-    zip?: string | null;
-    company?: string | null;
-  } | null;
+  default_address?: ShopifyAddress | null;
+}
+
+export interface ShopifyVariantPayload {
+  id?: number | string;
+  sku?: string | null;
+  barcode?: string | null;
+  price?: string | null;
+  title?: string | null;
+  inventory_item_id?: number | string | null;
 }
 
 export interface ShopifyProductPayload {
   id?: number | string;
   title?: string | null;
   status?: string | null;
-  variants?: Array<{
-    id?: number | string;
-    sku?: string | null;
-    barcode?: string | null;
-    price?: string | null;
-  }>;
+  variants?: ShopifyVariantPayload[];
 }
 
-/** REST `inventory_levels/update` body. There is no top-level product id. */
+/** REST `inventory_levels/update` body. There is no product id. */
 export interface ShopifyInventoryLevelPayload {
   inventory_item_id?: number | string;
   location_id?: number | string;
@@ -54,22 +80,33 @@ export interface ShopifyInventoryLevelPayload {
   updated_at?: string;
 }
 
+export interface ShopifyLineItemPayload {
+  id?: number | string;
+  product_id?: number | string | null;
+  variant_id?: number | string | null;
+  sku?: string | null;
+  title?: string | null;
+  name?: string | null;
+  quantity?: number;
+  price?: string | null;
+}
+
 export interface ShopifyOrderPayload {
   id?: number | string;
   name?: string | null;
   email?: string | null;
+  phone?: string | null;
   financial_status?: string | null;
   currency?: string | null;
+  taxes_included?: boolean;
+  gateway?: string | null;
+  payment_gateway_names?: string[] | null;
+  processed_at?: string | null;
+  created_at?: string | null;
   customer?: ShopifyCustomerPayload | null;
-  line_items?: Array<{
-    id?: number | string;
-    product_id?: number | string | null;
-    variant_id?: number | string | null;
-    sku?: string | null;
-    title?: string | null;
-    quantity?: number;
-    price?: string | null;
-  }>;
+  billing_address?: ShopifyAddress | null;
+  shipping_address?: ShopifyAddress | null;
+  line_items?: ShopifyLineItemPayload[];
 }
 
 function asId(value: number | string | null | undefined): string | null {
@@ -77,24 +114,16 @@ function asId(value: number | string | null | undefined): string | null {
   return String(value);
 }
 
-function stub(input: {
+function result(input: {
+  status: SyncStatus;
   entityType: string | null;
   shopifyId: string | null;
   oxygenId: string | null;
   message: string;
 }): SyncResult {
-  return { status: "stub", ...input };
+  return input;
 }
 
-/**
- * Shopify customer → Oxygen contact.
- * TODO: map fields and call the client.
- * Required on POST /contacts: type, is_client, is_supplier, country.
- * Type 1 (private) needs name + surname. Type 2 (company) needs company_name,
- * vat_number, tax_office (Greece), street, number, city, zip_code.
- * FIXME: Shopify does not store Greek tax office or a reliable company/private flag.
- * https://api.oxygen.gr/openapi.json — POST /contacts, PATCH /contacts/{contact_id}
- */
 export async function syncCustomer(input: {
   shop: string;
   topic: string;
@@ -102,7 +131,8 @@ export async function syncCustomer(input: {
 }): Promise<SyncResult> {
   const shopifyId = asId(input.customer.id);
   if (!shopifyId) {
-    return stub({
+    return result({
+      status: "skipped",
       entityType: EntityType.Customer,
       shopifyId: null,
       oxygenId: null,
@@ -110,34 +140,30 @@ export async function syncCustomer(input: {
     });
   }
 
-  const oxygenId = await findOxygenId(
-    input.shop,
-    EntityType.Customer,
+  const address = input.customer.default_address;
+  const draft = buildPrivateContact({
     shopifyId,
-  );
-
-  // TODO: if oxygenId is null, GET /contacts?email= before POST /contacts.
-  // TODO: if oxygenId is set, PATCH /contacts/{oxygenId} with changed fields.
-  // TODO: upsertMapping(customer) with the returned contact id.
-  return stub({
+    email: input.customer.email,
+    firstName: input.customer.first_name || address?.first_name,
+    lastName: input.customer.last_name || address?.last_name,
+    phone: input.customer.phone || address?.phone,
+    countryCode: address?.country_code,
+    address1: address?.address1,
+    city: address?.city,
+    zip: address?.zip,
+    company: address?.company,
+  });
+  const client = createOxygenClient();
+  const oxygenId = await upsertContact(client, input.shop, shopifyId, draft);
+  return result({
+    status: "synced",
     entityType: EntityType.Customer,
     shopifyId,
     oxygenId,
-    message: oxygenId
-      ? `Mapped customer ${shopifyId} → contact ${oxygenId}. TODO: PATCH /contacts/${oxygenId}.`
-      : `No Oxygen contact for customer ${shopifyId}. TODO: POST /contacts (${OXYGEN_OPENAPI_URL}).`,
+    message: `Customer ${shopifyId} → Oxygen contact ${oxygenId}.`,
   });
 }
 
-/**
- * Shopify product → Oxygen product.
- * TODO: merchant must choose variant strategy before this writes anything.
- * FIXME: one Shopify product often has many variants. Oxygen models that either
- * as separate products or as a product group (`POST /products-groups`) plus variations.
- * Do not guess. Required on POST /products: name, code, warehouses, sale_net_amount,
- * sale_tax_id, status. sale_tax_id comes from GET /taxes — not from Shopify.
- * https://api.oxygen.gr/openapi.json — POST /products, PUT /products/{product_id}
- */
 export async function syncProduct(input: {
   shop: string;
   topic: string;
@@ -145,7 +171,8 @@ export async function syncProduct(input: {
 }): Promise<SyncResult> {
   const shopifyId = asId(input.product.id);
   if (!shopifyId) {
-    return stub({
+    return result({
+      status: "skipped",
       entityType: EntityType.Product,
       shopifyId: null,
       oxygenId: null,
@@ -153,29 +180,72 @@ export async function syncProduct(input: {
     });
   }
 
-  const oxygenId = await findOxygenId(input.shop, EntityType.Product, shopifyId);
-  const variantCount = input.product.variants?.length ?? 0;
+  const variants = input.product.variants ?? [];
+  if (variants.length === 0) {
+    return result({
+      status: "skipped",
+      entityType: EntityType.Product,
+      shopifyId,
+      oxygenId: null,
+      message: `Product ${shopifyId} has no variants.`,
+    });
+  }
 
-  return stub({
-    entityType: EntityType.Product,
+  const client = createOxygenClient();
+  const notes: string[] = [];
+  let lastOxygenId: string | null = null;
+  let synced = 0;
+
+  for (const variant of variants) {
+    const sku = normalizeSku(variant.sku);
+    const variantId = asId(variant.id);
+    if (!sku) {
+      const label = variantId ?? "unknown";
+      console.error(
+        `[oxygen-sync] Skipping variant ${label} on product ${shopifyId}: SKU is required and was not invented.`,
+      );
+      notes.push(`variant ${label}: missing SKU`);
+      continue;
+    }
+    if (!variantId) {
+      throw new Error(
+        `Product ${shopifyId} variant with SKU ${sku} has no id.`,
+      );
+    }
+
+    const oxygenId = await upsertVariant(client, input.shop, {
+      variantId,
+      sku,
+      price: variant.price,
+      title: productDisplayName(input.product.title, variant.title),
+      barcode: variant.barcode,
+      active: input.product.status == null || input.product.status === "active",
+      inventoryItemId: asId(variant.inventory_item_id),
+    });
+    lastOxygenId = oxygenId;
+    synced += 1;
+    notes.push(`variant ${variantId} SKU ${sku} → ${oxygenId}`);
+  }
+
+  if (synced === 0) {
+    return result({
+      status: "skipped",
+      entityType: EntityType.Product,
+      shopifyId,
+      oxygenId: null,
+      message: `Product ${shopifyId}: no variant had a SKU. ${notes.join("; ")}`,
+    });
+  }
+
+  return result({
+    status: "synced",
+    entityType: EntityType.Variant,
     shopifyId,
-    oxygenId,
-    message:
-      `Product ${shopifyId} has ${variantCount} variant(s). ` +
-      "FIXME: confirm SKU-per-Oxygen-product vs /products-groups before POST /products. " +
-      `sale_tax_id and warehouses[].id are merchant data (${OXYGEN_OPENAPI_URL}).`,
+    oxygenId: lastOxygenId,
+    message: `Product ${shopifyId}: ${notes.join("; ")}`,
   });
 }
 
-/**
- * Shopify inventory level → Oxygen warehouse quantity.
- * There is no standalone inventory endpoint. Quantity is `warehouses[].quantity`
- * on POST/PUT /products/{product_id}.
- * FIXME: payload has inventory_item_id + location_id, not a product id.
- * TODO: Admin GraphQL to resolve inventory item → variant → product (read_products, read_inventory),
- * then ExternalIdMap location → warehouse id, then PUT the Oxygen product.
- * Confirm whether PUT warehouses replaces the whole set (OpenAPI description says the array is the warehouse details).
- */
 export async function syncInventory(input: {
   shop: string;
   topic: string;
@@ -183,37 +253,61 @@ export async function syncInventory(input: {
 }): Promise<SyncResult> {
   const inventoryItemId = asId(input.level.inventory_item_id);
   const locationId = asId(input.level.location_id);
-  const warehouseId = locationId
-    ? await findOxygenId(input.shop, EntityType.Location, locationId)
-    : null;
+  const warehouseId = readWarehouseId();
 
-  return stub({
-    entityType: EntityType.Location,
-    shopifyId: locationId,
-    oxygenId: warehouseId,
+  if (!warehouseId || !shouldWriteInventory(warehouseId)) {
+    const message =
+      "OXYGEN_DEFAULT_WAREHOUSE_ID is empty. Inventory stock was not written. Products, customers and orders still sync.";
+    console.warn(`[oxygen-sync] ${message}`);
+    return result({
+      status: "skipped",
+      entityType: EntityType.InventoryItem,
+      shopifyId: inventoryItemId,
+      oxygenId: null,
+      message,
+    });
+  }
+
+  if (!inventoryItemId) {
+    throw new Error("inventory_levels/update payload has no inventory_item_id.");
+  }
+  if (input.level.available == null) {
+    return result({
+      status: "skipped",
+      entityType: EntityType.InventoryItem,
+      shopifyId: inventoryItemId,
+      oxygenId: null,
+      message: `inventory_item ${inventoryItemId} has no available quantity. Stock was not written.`,
+    });
+  }
+
+  const oxygenId = await findOxygenId(
+    input.shop,
+    EntityType.InventoryItem,
+    inventoryItemId,
+  );
+  if (!oxygenId) {
+    throw new Error(
+      `No Oxygen product mapped for inventory_item ${inventoryItemId}. Sync the product (variant SKU) first.`,
+    );
+  }
+
+  const client = createOxygenClient();
+  await client.updateProduct(oxygenId, {
+    warehouses: [{ id: warehouseId, quantity: input.level.available }],
+  });
+
+  return result({
+    status: "synced",
+    entityType: EntityType.InventoryItem,
+    shopifyId: inventoryItemId,
+    oxygenId,
     message:
-      `inventory_item ${inventoryItemId ?? "?"} at location ${locationId ?? "?"}` +
-      `${warehouseId ? ` → warehouse ${warehouseId}` : " has no warehouse mapping"}. ` +
-      `available=${input.level.available ?? "?"}. ` +
-      "TODO: resolve variant, then PUT /products/{id} warehouses[].quantity. " +
-      OXYGEN_OPENAPI_URL,
+      `inventory_item ${inventoryItemId} location ${locationId ?? "?"} available ${input.level.available} ` +
+      `→ Oxygen product ${oxygenId} warehouse ${warehouseId}. All Shopify locations share this warehouse.`,
   });
 }
 
-/**
- * Shopify order → Oxygen contact, then invoice.
- *
- * Idempotency: orders/create and orders/paid both arrive for one order.
- * POST /invoices must run only when ExternalIdMap has no `order` row for this id.
- * orders/create ensures the contact. orders/paid is the invoice step.
- * orders/updated is intentionally not subscribed.
- *
- * FIXME required invoice fields that Shopify does not provide:
- * payment_method_id (GET /payment-methods), mydata_document_type (AADE 8.1 enum in OpenAPI),
- * per-line tax_id unless a valid Oxygen product code is sent.
- * document_type is `p` or `rp` for goods — merchant must confirm retail receipt vs invoice.
- * https://api.oxygen.gr/openapi.json — POST /invoices, POST /invoices/{invoice_id}/payments
- */
 export async function syncOrder(input: {
   shop: string;
   topic: string;
@@ -221,7 +315,8 @@ export async function syncOrder(input: {
 }): Promise<SyncResult> {
   const shopifyId = asId(input.order.id);
   if (!shopifyId) {
-    return stub({
+    return result({
+      status: "skipped",
       entityType: EntityType.Order,
       shopifyId: null,
       oxygenId: null,
@@ -234,44 +329,229 @@ export async function syncOrder(input: {
     EntityType.Order,
     shopifyId,
   );
-
-  if (input.order.customer?.id) {
-    await syncCustomer({
-      shop: input.shop,
-      topic: input.topic,
-      customer: input.order.customer,
-    });
-  }
+  const client = createOxygenClient();
+  const contactId = await ensureOrderContact(client, input.shop, input.order);
 
   if (existingInvoiceId) {
-    return {
+    return result({
       status: "skipped",
       entityType: EntityType.Order,
       shopifyId,
       oxygenId: existingInvoiceId,
-      message: `Order ${shopifyId} already mapped to invoice ${existingInvoiceId}. Not posting /invoices again.`,
-    };
-  }
-
-  if (input.topic === "ORDERS_CREATE") {
-    return stub({
-      entityType: EntityType.Order,
-      shopifyId,
-      oxygenId: null,
-      message:
-        "orders/create ensures the contact only. Invoice is deferred to orders/paid so a paid order is not invoiced twice.",
+      message: `Order ${shopifyId} already mapped to Oxygen document ${existingInvoiceId}. Not posting /invoices again.`,
     });
   }
 
-  const lineCount = input.order.line_items?.length ?? 0;
-  return stub({
+  if (input.topic === "ORDERS_CREATE") {
+    return result({
+      status: "synced",
+      entityType: EntityType.Order,
+      shopifyId,
+      oxygenId: null,
+      message: `orders/create ensured Oxygen contact ${contactId} for order ${shopifyId}. No document issued until orders/paid.`,
+    });
+  }
+
+  const gateway = shopifyGateway(input.order);
+  const payment = await resolvePaymentMethodId(client, gateway);
+  const taxesIncluded = input.order.taxes_included ?? CATALOG_PRICES_INCLUDE_VAT;
+  const warehouseId = readWarehouseId();
+  const lines = [];
+
+  for (const item of input.order.line_items ?? []) {
+    const quantity = item.quantity ?? 0;
+    if (quantity <= 0) continue;
+    const variantId = asId(item.variant_id);
+    const oxygenProductId = variantId
+      ? await findOxygenId(input.shop, EntityType.Variant, variantId)
+      : null;
+    lines.push(
+      buildInvoiceLine({
+        oxygenProductId,
+        title: item.title || item.name || item.sku,
+        quantity,
+        unitPrice: item.price,
+        taxesIncluded,
+        warehouseId,
+      }),
+    );
+  }
+
+  if (lines.length === 0) {
+    throw new Error(`Order ${shopifyId} has no billable line items.`);
+  }
+
+  const receipt = buildRetailReceipt({
+    issueDate: issueDateFromShopify(
+      input.order.processed_at || input.order.created_at,
+    ),
+    contactId,
+    paymentMethodId: payment.id,
+    orderName: input.order.name,
+    shopifyOrderId: shopifyId,
+    lines,
+  });
+  const invoice = await client.createInvoice(receipt);
+  if (!invoice.id) {
+    throw new Error(`Oxygen did not return an id for order ${shopifyId}.`);
+  }
+
+  await upsertMapping({
+    shop: input.shop,
     entityType: EntityType.Order,
     shopifyId,
-    oxygenId: null,
-    message:
-      `TODO: POST /invoices for order ${shopifyId} (${lineCount} lines) after the contact exists. ` +
-      "FIXME: payment_method_id, mydata_document_type, document_type and line tax_id " +
-      `must be confirmed with the merchant (${OXYGEN_OPENAPI_URL}). ` +
-      "If the invoice is paid, either is_paid=true or POST /invoices/{id}/payments — do not do both.",
+    oxygenId: invoice.id,
   });
+
+  return result({
+    status: "synced",
+    entityType: EntityType.Order,
+    shopifyId,
+    oxygenId: invoice.id,
+    message:
+      `Order ${shopifyId} → Oxygen receipt ${invoice.id} ` +
+      `(rp / myDATA 11.1, payment ${payment.bucket} via ${payment.source}, contact ${contactId}).`,
+  });
+}
+
+async function ensureOrderContact(
+  client: OxygenClient,
+  shop: string,
+  order: ShopifyOrderPayload,
+): Promise<string> {
+  const customer = order.customer;
+  const address =
+    customer?.default_address ||
+    order.billing_address ||
+    order.shipping_address ||
+    null;
+  const shopifyId =
+    asId(customer?.id) ||
+    (order.email?.trim()
+      ? `guest:${order.email.trim().toLowerCase()}`
+      : `guest:order:${asId(order.id) ?? "unknown"}`);
+  const draft = buildPrivateContact({
+    shopifyId,
+    email: customer?.email || order.email,
+    firstName: customer?.first_name || address?.first_name,
+    lastName: customer?.last_name || address?.last_name,
+    phone: customer?.phone || address?.phone || order.phone,
+    countryCode: address?.country_code,
+    address1: address?.address1,
+    city: address?.city,
+    zip: address?.zip,
+    company: address?.company,
+  });
+  return upsertContact(client, shop, shopifyId, draft);
+}
+
+async function upsertContact(
+  client: OxygenClient,
+  shop: string,
+  shopifyId: string,
+  draft: ReturnType<typeof buildPrivateContact>,
+): Promise<string> {
+  for (const warning of draft.warnings) {
+    console.warn(`[oxygen-sync] ${warning}`);
+  }
+
+  let oxygenId = await findOxygenId(shop, EntityType.Customer, shopifyId);
+  const code = draft.body.code ?? contactCode(shopifyId);
+
+  if (!oxygenId) {
+    const byCode = await client.listContacts({ code });
+    oxygenId = byCode.data?.find((contact) => contact.code === code)?.id ?? null;
+  }
+  if (!oxygenId && draft.body.email) {
+    const email = draft.body.email.toLowerCase();
+    const byEmail = await client.listContacts({ email: draft.body.email });
+    oxygenId =
+      byEmail.data?.find((contact) => contact.email?.toLowerCase() === email)
+        ?.id ?? null;
+  }
+
+  if (oxygenId) {
+    const updated = await client.updateContact(oxygenId, draft.body);
+    const id = updated.id || oxygenId;
+    await upsertMapping({
+      shop,
+      entityType: EntityType.Customer,
+      shopifyId,
+      oxygenId: id,
+    });
+    return id;
+  }
+
+  const created = await client.createContact(draft.body);
+  if (!created.id) {
+    throw new Error(`Oxygen contact create returned no id for ${shopifyId}.`);
+  }
+  await upsertMapping({
+    shop,
+    entityType: EntityType.Customer,
+    shopifyId,
+    oxygenId: created.id,
+  });
+  return created.id;
+}
+
+async function upsertVariant(
+  client: OxygenClient,
+  shop: string,
+  variant: {
+    variantId: string;
+    sku: string;
+    price: string | null | undefined;
+    title: string;
+    barcode?: string | null;
+    active: boolean;
+    inventoryItemId: string | null;
+  },
+): Promise<string> {
+  const fields = {
+    name: variant.title,
+    code: variant.sku,
+    type: 1 as const,
+    sale_net_amount: shopifyPriceToNet(variant.price, CATALOG_PRICES_INCLUDE_VAT),
+    sale_tax_id: SALE_TAX_ID,
+    status: variant.active,
+    ...(variant.barcode?.trim() ? { barcode: variant.barcode.trim() } : {}),
+  };
+
+  let oxygenId = await findOxygenId(shop, EntityType.Variant, variant.variantId);
+  if (!oxygenId) {
+    const listed = await client.listProducts({ code: variant.sku });
+    oxygenId = listed.data?.find((product) => product.code === variant.sku)?.id ?? null;
+  }
+
+  if (oxygenId) {
+    const updated = await client.updateProduct(oxygenId, fields);
+    oxygenId = updated.id || oxygenId;
+  } else {
+    const warehouseId = readWarehouseId();
+    const created = await client.createProduct({
+      ...fields,
+      warehouses: warehouseId ? [{ id: warehouseId }] : [],
+    });
+    if (!created.id) {
+      throw new Error(`Oxygen product create returned no id for SKU ${variant.sku}.`);
+    }
+    oxygenId = created.id;
+  }
+
+  await upsertMapping({
+    shop,
+    entityType: EntityType.Variant,
+    shopifyId: variant.variantId,
+    oxygenId,
+  });
+  if (variant.inventoryItemId) {
+    await upsertMapping({
+      shop,
+      entityType: EntityType.InventoryItem,
+      shopifyId: variant.inventoryItemId,
+      oxygenId,
+    });
+  }
+  return oxygenId;
 }

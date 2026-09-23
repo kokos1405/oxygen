@@ -13,6 +13,7 @@ import type {
   OxygenInvoicePaymentWrite,
   OxygenInvoiceWrite,
   OxygenList,
+  OxygenPaymentMethod,
   OxygenPdfTemplate,
   OxygenProduct,
   OxygenProductListQuery,
@@ -140,6 +141,11 @@ export class OxygenClient {
 
   listWarehouses(): Promise<{ data: OxygenWarehouse[] }> {
     return this.request("GET", "/warehouses");
+  }
+
+  /** GET /payment-methods — titles are matched to Shopify gateways. */
+  listPaymentMethods(): Promise<{ data: OxygenPaymentMethod[] }> {
+    return this.request("GET", "/payment-methods");
   }
 
   /** GET /taxes — ids are required later as `sale_tax_id` / invoice line `tax_id`. */

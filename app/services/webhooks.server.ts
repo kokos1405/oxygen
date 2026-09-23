@@ -27,7 +27,7 @@ const DONE_STATUSES = new Set(["stub", "synced", "skipped"]);
  *
  * Idempotency: Shopify retries non-2xx responses for up to 48 hours and may
  * deliver the same `X-Shopify-Webhook-Id` more than once. A stored row with
- * status stub/synced/skipped returns 200 without running the stub again.
+ * status stub/synced/skipped returns 200 without running sync again.
  * A failed attempt does not write that id, so the retry can proceed.
  * Invoice idempotency is separate and keyed by the order id in ExternalIdMap
  * (see syncOrder) because orders/create and orders/paid are different webhook ids.

@@ -48,6 +48,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     lastSync,
     syncLogReady,
     webhooks: webhookTopics,
+    inventoryWritesEnabled: Boolean(
+      process.env.OXYGEN_DEFAULT_WAREHOUSE_ID?.trim(),
+    ),
   };
 };
 
@@ -57,7 +60,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Index() {
-  const { shop, connection, lastSync, syncLogReady, webhooks } =
+  const { shop, connection, lastSync, syncLogReady, webhooks, inventoryWritesEnabled } =
     useLoaderData<typeof loader>();
 
   return (
@@ -76,6 +79,11 @@ export default function Index() {
           Μην εγκαταστήσετε την εφαρμογή στο live κατάστημα
           nth02c-ir.myshopify.com χωρίς έγκριση του εμπόρου. Oxygen μόνο στο
           https://sandbox-api.oxygen.gr/v1, σε development store.
+        </s-paragraph>
+        <s-paragraph>
+          {inventoryWritesEnabled
+            ? "Απόθεμα: οι ενημερώσεις γράφονται στη μία αποθήκη OXYGEN_DEFAULT_WAREHOUSE_ID."
+            : "Απόθεμα: ανενεργό. Το OXYGEN_DEFAULT_WAREHOUSE_ID είναι κενό, οπότε το inventory_levels/update δεν γράφει ποσότητα. Πελάτες, προϊόντα και παραγγελίες συγχρονίζονται."}
         </s-paragraph>
       </s-section>
 

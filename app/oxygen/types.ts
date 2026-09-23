@@ -3,8 +3,7 @@
  * Source of truth: https://api.oxygen.gr/openapi.json
  *
  * Fields that the spec marks required are required here.
- * Conditional fields (for example company VAT) stay optional and are called out
- * with FIXME in the sync stubs rather than guessed.
+ * Conditional fields stay optional rather than guessed.
  */
 
 export interface OxygenServiceInfo {
@@ -165,6 +164,15 @@ export interface OxygenWarehouse {
 /** Remaining TaxItem fields: OpenAPI schema `TaxItem`. */
 export interface OxygenTax {
   id: string;
+}
+
+/** OpenAPI schema `PaymentMethodItem`. */
+export interface OxygenPaymentMethod {
+  id: string;
+  title_gr?: string | null;
+  title_en?: string | null;
+  mydata_code?: string | null;
+  status?: boolean | null;
 }
 
 /**
